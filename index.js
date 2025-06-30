@@ -1,42 +1,49 @@
-const express = require('express');
-const puppeteer = require('puppeteer-core');
-const app = express();
+import express from 'express';
+import cors from 'cors';
+import puppeteer from 'puppeteer';
 
+const app = express();
+app.use(cors());
 app.use(express.json());
 
 app.post('/scrape', async (req, res) => {
   const { url } = req.body;
 
-  if (!url) return res.status(400).json({ error: 'Missing URL' });
+  if (!url) {
+    return res.status(400).json({ error: 'URL is required' });
+  }
 
   try {
     const browser = await puppeteer.launch({
-      headless: true,
-      args: ['--no-sandbox'],
-      executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || '/usr/bin/google-chrome'
+      headless: 'new',
+      args: ['--no-sandbox', '--disable-setuid-sandbox']
     });
 
     const page = await browser.newPage();
-    await page.goto(url, { waitUntil: 'domcontentloaded' });
+    await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 60000 });
 
+    // Собираем все товары с нужными данными
     const products = await page.evaluate(() => {
-      return Array.from(document.querySelectorAll('.product-card')).map(el => ({
-        name: el.querySelector('.product-card__title')?.innerText.trim(),
-        price: el.querySelector('.price__lower-price')?.innerText.trim().replace(/[^\d]/g, ''),
-        weight: el.querySelector('.product-card__description')?.innerText.trim(),
-        brand: el.querySelector('.product-card__brand')?.innerText.trim(),
-        shop: 'Ашан'
-      }));
+      const items = [];
+      document.querySelectorAll('[data-link="product-card"]').forEach(card => {
+        const name = card.querySelector('[data-link="text"]')?.innerText || '';
+        const price = card.querySelector('[data-link="price"]')?.innerText || '';
+        const weight = name.match(/\d+\s?[гг]/)?.[0] || '';
+        items.push({ name, price, weight });
+      });
+      return items;
     });
 
     await browser.close();
-    res.json({ products });
 
+    res.json({ products });
   } catch (error) {
-    res.status(500).json({ error: error.message });
+    console.error(error);
+    res.status(500).json({ error: 'Scraping failed', details: error.message });
   }
 });
 
-app.listen(process.env.PORT || 3000, () => {
-  console.log('Server running');
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, () => {
+  console.log(`✅ Server started on port ${PORT}`);
 });
