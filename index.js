@@ -15,7 +15,7 @@ app.post('/scrape', async (req, res) => {
 
   try {
     const browser = await puppeteer.launch({
-      headless: 'new',
+      headless: 'false',
       args: ['--no-sandbox', '--disable-setuid-sandbox']
     });
 
